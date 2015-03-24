@@ -14,7 +14,7 @@ interface SiteMapGeneratorInterface
      *
      * @return mixed
      */
-    public function getMainPageContent($url);
-//    public function extractLinks();
+    public function getPageContent($url);
+    public function extractLinks($html);
 //    public function runAsyncQueries(array $urls);
 }
