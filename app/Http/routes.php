@@ -13,3 +13,9 @@
 
 Route::get('/', 'WelcomeController@index');
 Route::post('generate-site-map', ['as' => 'generate', 'uses' => 'SiteMapGeneratorController@generate']);
+
+
+$this->app->bind('Generator', function()
+{
+    return new \App\Generators\SiteMapGenerator();
+});

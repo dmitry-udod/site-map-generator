@@ -1,11 +1,14 @@
 <?php namespace App\Http\Controllers;
 
 use App\Http\Requests\GenerateSiteMapRequest;
+use Input;
 
 class SiteMapGeneratorController extends Controller
 {
 	public function generate(GenerateSiteMapRequest $request)
 	{
-//		return redirect('/');
+		$url = Input::get('url');
+
+		return redirect('/');
 	}
 }
