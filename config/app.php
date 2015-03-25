@@ -146,6 +146,7 @@ return [
 		'App\Providers\RouteServiceProvider',
 		'Illuminate\Html\HtmlServiceProvider',
 		'Illuminate\View\ViewServiceProvider',
+		'Roumen\Sitemap\SitemapServiceProvider',
 
 	],
 

@@ -8,7 +8,7 @@ class SiteMapGeneratorTest extends TestCase
     public function setUp()
     {
         parent::setUp();
-        $this->generator = \App::make('Generator')->setUrl('http://google.com');
+        $this->generator = \App::make('Generator')->setUrl('https://www.google.com.ua');
     }
 
     public function testGetMainPageContentSuccess()
@@ -37,14 +37,20 @@ class SiteMapGeneratorTest extends TestCase
                 <a href="http://yahoo.com">Link</a>
             </body>
             <a class="testme" href="#"></a>
-            <a class="testme" href="http://google.com/1234"></a>
-            <a class="testme" href="http://google.com/12345"></a>
+            <a class="testme" href="https://www.google.com.ua/intl/ru/about.html?fg=1"></a>
+            <a class="testme" href="https://www.google.com.ua/services/?fg=1"></a>
         </html>
         ';
 
         $links = $this->generator->extractLinks($html);
         $this->assertCount(2, $links, 'We have only 2 links for this domain');
-        $this->assertEquals('http://google.com/1234', $links[0]);
-        $this->assertEquals('http://google.com/12345', $links[1]);
+        $this->assertEquals('https://www.google.com.ua/intl/ru/about.html?fg=1', $links[0]);
+        $this->assertEquals('https://www.google.com.ua/services/?fg=1', $links[1]);
+    }
+
+    public function testAsyncRequests()
+    {
+        $urls = ['https://www.google.com.ua/intl/ru/about.html?fg=1', 'https://www.google.com.ua/services/?fg=1'];
+        $this->generator->runAsyncQueries($urls);
     }
 }

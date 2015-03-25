@@ -1,10 +1,12 @@
 <?php namespace App\Generators;
 
 use App\Contracts\SiteMapGeneratorInterface;
+use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Symfony\Component\DomCrawler\Crawler;
 use Log;
+use App;
 
 class SiteMapGenerator implements SiteMapGeneratorInterface
 {
@@ -15,14 +17,31 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
      */
     protected $url = null;
 
+    /**
+     * Level of immersion
+     *
+     * @var int
+     */
+    protected $level = 1;
+
     public function __construct()
     {
         $this->client = new Client();
+        $this->sitemap = App::make("sitemap");
     }
 
     public function generate()
     {
+        $now = Carbon::now();
+        $this->sitemap->add($this->url, $now, '1.0', 'daily');
 
+        while ($this->level < 2) {
+            $html = $this->getPageContent($this->url);
+            $urls = $this->extractLinks($html);
+            $this->runAsyncQueries($urls);
+        }
+
+        $this->sitemap->store('xml', 'mysitemap');
     }
 
     /**
@@ -62,7 +81,11 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
         $crawler->filter('a')->each(function (Crawler $node, $i) use (&$links) {
             $link = $node->extract('href');
             if (!is_null($link = $link[0])) {
-                if (starts_with($link, $this->url) && $link !== $this->url) {
+                $isRoot = starts_with($link, '/');
+                if ((starts_with($link, $this->url) || $isRoot) && $link !== $this->url) {
+                    if ($isRoot) {
+                        $link = $this->url . $link;
+                    }
                     $links[] = $link;
                 }
             }
@@ -70,6 +93,32 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
 
         return $links;
     }
+
+    /**
+     * Send async requests
+     *
+     * @param array $urls
+     */
+    public function runAsyncQueries(array $urls)
+    {
+        foreach ($urls as $url) {
+            $response = $this->client->get($url, ['future' => true]);
+
+            $response->then(
+                function ($response) use ($url) {
+                    if ($response->getStatusCode() === 200) {
+                        $this->sitemap->add($url, Carbon::now(), '0.9', 'daily');
+                        $this->sitemap->store('xml', 'mysitemap');
+                    }
+                },
+                function ($error) {
+                    Log::error('Exception', [$error->getMessage() ,$error]);
+                }
+            );
+        }
+        $this->level++;
+    }
+
 
     /**
      * Set site URL
