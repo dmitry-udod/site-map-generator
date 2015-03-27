@@ -4,13 +4,17 @@ use App\Contracts\SiteMapGeneratorInterface;
 use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Support\Facades\Config;
 use Symfony\Component\DomCrawler\Crawler;
 use Log;
 use App;
+use Session;
 use GuzzleHttp\Pool;
 
 class SiteMapGenerator implements SiteMapGeneratorInterface
 {
+    const SITE_MAPS_DIRECTORY = '/sitemaps';
+
     /**
      * Site URL
      *
@@ -25,9 +29,33 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
      */
     protected $level = 0;
 
+    /**
+     * Urls to process
+     *
+     * @var array
+     */
     protected $urlsToProcess = [];
 
+    /**
+     * List of already processed URL's
+     *
+     * @var array
+     */
     protected $alreadyProcessedUrls = [];
+
+    /**
+     * Max deep level
+     *
+     * @var int
+     */
+    protected $maxDeepsLevel;
+
+    /**
+     * Custom priorities
+     *
+     * @var array
+     */
+    protected $priorities = [];
 
     public function __construct()
     {
@@ -41,7 +69,7 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
     public function generate()
     {
         $this->urlsToProcess = [$this->url];
-        while ($this->level <= 5) {
+        while ($this->level <= $this->maxDeepsLevel) {
             if(!empty($this->urlsToProcess)) {
                 $this->sendPoolRequest($this->urlsToProcess);
             }
@@ -49,7 +77,10 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
             Log::debug('Level: ', [$this->level]);
         }
 
-        $this->sitemap->store('xml', 'sitemaps/'. preg_replace("/[^a-zA-Z0-9]/", "", $this->url));
+        $this->sitemap->store('xml', self::SITE_MAPS_DIRECTORY .
+            '/' .preg_replace("/[^a-zA-Z0-9]/", "", str_replace('http', '', $this->url)));
+
+        Session::flash('success', 'Site map generate successfully');
     }
 
     /**
@@ -111,36 +142,11 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
     }
 
     /**
-     * Send async requests
+     * Send pool requests
      *
      * @param array $urls
+     * @return array
      */
-    public function runAsyncQueries(array $urls)
-    {
-        foreach ($urls as $url) {
-            $response = $this->client->get($url, ['future' => true]);
-
-            $response->then(
-                function ($response) use ($url) {
-                    if ($response->getStatusCode() === 200) {
-                        if (!in_array($url, $this->alreadyProcessedUrls)) {
-                            $this->sitemap->add($url, Carbon::now(), '0.9', 'daily');
-                            $this->sitemap->store('xml', 'mysitemap');
-                            $this->alreadyProcessedUrls[] = $url;
-                            $this->alreadyProcessedUrls[] = $url . '/';
-                        }
-                        $this->urlsToProcess += $this->extractLinks($response->getBody()->getContents());
-                        Log::debug(array_unique($this->urlsToProcess));
-                    }
-                },
-                function ($error) {
-                    Log::error('Exception', [$error->getMessage() ,$error]);
-                }
-            );
-        }
-        $this->level++;
-    }
-
     public function sendPoolRequest(array $urls)
     {
         $urls = array_unique($urls);
@@ -162,10 +168,8 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
                 Log::debug('Processed URL:' . $url);
                 $this->urlsToProcess = array_merge($this->urlsToProcess, $this->extractLinks($response->getBody()->getContents()));
                 $this->urlsToProcess = array_unique($this->urlsToProcess);
-//                $this->urlsToProcess += $this->extractLinks($response->getBody()->getContents());
-//                $this->urlsToProcess = array_unique($this->urlsToProcess);
 
-                $this->sitemap->add($url, Carbon::now(), '0.9', 'daily');
+                $this->sitemap->add($url, Carbon::now(), $this->priority($url), 'daily');
             }
 
             foreach ($results->getFailures() as $requestException) {
@@ -192,8 +196,69 @@ class SiteMapGenerator implements SiteMapGeneratorInterface
         return $this;
     }
 
+    /**
+     * Set max deep level
+     *
+     * @param int $maxDeepsLevel
+     * @return $this
+     */
+    public function setMaxDeepsLevel($maxDeepsLevel)
+    {
+        if (empty($maxDeepsLevel)) {
+            $maxDeepsLevel = Config::get('settings.deeps_level');
+        }
+
+        $this->maxDeepsLevel = $maxDeepsLevel;
+
+        return $this;
+    }
+
+    /**
+     * Set custom priorities
+     *
+     * @param array $priorities
+     * @return $this
+     */
+    public function setPriorities(array $priorities)
+    {
+        $this->priorities['first_level_priority'] = !empty($priorities['first_level_priority']) ? $priorities['first_level_priority'] : '1' ;
+        $this->priorities['second_level_priority'] = !empty($priorities['second_level_priority']) ? $priorities['second_level_priority'] : '0.8' ;
+        $this->priorities['other_level_priority'] = !empty($priorities['other_level_priority']) ? $priorities['other_level_priority'] : '0.5' ;
+
+        return $this;
+    }
+
+    /**
+     * Check is file link
+     *
+     * @param $link
+     * @return bool
+     */
     private function isFileLink($link)
     {
         return str_contains(strtolower($link), ['.jpeg', '.jpg', '.png', '.pdf', '.docs', '.gif', '.zip', '.rar']);
+    }
+
+    /**
+     * Get priority
+     *
+     * @param $url
+     * @return string
+     */
+    private function priority($url)
+    {
+        $url = parse_url($url);
+
+        if(!empty($url['path'])) {
+            $parts = explode('/', $url['path']);
+            $level = count($parts);
+            if ($level <= 2) {
+                return $this->priorities['second_level_priority'];
+            } else {
+                return $this->priorities['other_level_priority'];
+            }
+        }
+
+        return $this->priorities['first_level_priority'];
     }
 }

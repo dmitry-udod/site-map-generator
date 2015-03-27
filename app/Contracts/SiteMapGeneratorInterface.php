@@ -8,13 +8,7 @@ interface SiteMapGeneratorInterface
      * @return mixed
      */
     public function generate();
-
-    /**
-     * Get main page content
-     *
-     * @return mixed
-     */
     public function getPageContent($url);
     public function extractLinks($html);
-    public function runAsyncQueries(array $urls);
+    public function sendPoolRequest(array $urls);
 }
